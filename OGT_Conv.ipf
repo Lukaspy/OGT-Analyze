@@ -133,35 +133,41 @@ Function convolveTwoResponses(userPath1, userPath2, displayFlag)
 End
 
 //imports all files in the given directory, convolves each with the initial air response, displays result when displayFlag == 1
-Function convolveAirAndSampleDir([userPath, displayFlag])
+Function convolveAirAndSampleDir([userPath, displayFlag, exportFlag])
 	String userPath
 	variable displayFlag
+	variable exportFlag
 	
 	String responseList
 	String graphName
-	
+		
 	if (ParamIsDefault(userPath))
 		getfilefolderInfo/D
 		responseList = loadFilesFromDir(S_path)
+		userPath = S_path
+		
 	else
 		 responseList = loadFilesFromDir(userPath)
 	endif
-	
+	newPath/O loadPath userPath
 	
 	//Find the initial air response file
-	String airResponse
+	String airResponse = ""
 	variable i = 0
 	do
 		String currentResponse = stringfromList(i, responseList)
 		//Check if filename contains air and initial, when found remove from list
-		if (GrepString(currentResponse, "air") && GrepString(currentResponse, "initial"))
+		if (GrepString(currentResponse, "air") && GrepString(currentResponse, "in") && GrepString(currentResponse, "t"))
 			airResponse = currentResponse
 			//responseList = removeFromList(airResponse, responseList)
 			break
 		endif
 		i += 1
 	while(i < itemsinList(responseList))	
-	
+	if (cmpstr(airResponse, "", 0) == 0)
+		print "No initial air response found"
+		return -1
+	endif
 	//Set window name
 	
 	if (displayFlag == 1)
@@ -179,6 +185,9 @@ Function convolveAirAndSampleDir([userPath, displayFlag])
 	
 	for (i = 0; i < itemsInList(responseList); i++)
 		String currentWave = stringfromList(i, responseList)
+		if (GrepString(currentWave, "conv"))
+		
+		endif
 		String outputFilename = "conv_" + airResponse + "_and_" + currentWave
 		Duplicate/O $airResponse, $outputFilename; DelayUpdate
 		Convolve $airResponse, $outputFileName;DelayUpdate
@@ -189,11 +198,59 @@ Function convolveAirAndSampleDir([userPath, displayFlag])
 				appendtoGraph/W=$graphName $outputFilename
 			endif
 		endif
+		
+		if (exportFlag == 1)
+			Save/J/M="\r\n"/DLIM=","/W/P=loadPath $outputFilename as outputFilename + ".csv"
+		endif
 	endfor
 	
 	if (displayFlag == 1)
 		quickColorSpectrum(graphName)
 		Legend/C/N=text0/W=$graphName
+	endif
+	
+	
+	
+End
+
+Function convolveAirAndSampleRecursively([basePath, displayFlag, exportFlag])
+	String basePath
+	variable displayFlag
+	variable exportFlag
+	String filelist
+	String dirList
+	
+	//If no basePath specified ask user for it
+	if (ParamIsDefault(basePath))
+		getfilefolderInfo/D
+		basePath = S_path
+		newpath/O loadPath S_path
+		filelist = indexedFile(loadPath, -1, ".csv")
+		dirList = indexedDir(loadPath, -1, 0)
+
+	else
+		newpath/O loadPath basePath
+		filelist = indexedFile(loadPath, -1, ".csv")
+		dirList = indexedDir(loadPath, -1, 0)
+	endif
+	
+	//Check if basePath is a leaf (contains no more dirs, only csvs to process)
+	if ((itemsinList(filelist) != 0) && (itemsinList(dirList) == 0))
+		convolveAirandSampleDir(userPath = basePath, displayFlag = displayFlag, exportFlag = exportFlag)
+	else
+		variable i
+		for (i = 0; i < itemsInList(dirList); i++)
+			if (GrepString(stringfromList(i, dirList), "single"))
+				string newPath = basePath + stringFromList(i,dirList) + ":"
+				convolveAirAndSampleRecursively(basePath = newPath, displayFlag = displayFlag, exportFlag = exportFlag)
+			elseif (GrepString(stringFromList(i,dirList), "triple"))
+				continue
+			else
+				newPath = basePath + stringFromList(i,dirList) + ":"
+				convolveAirAndSampleRecursively(basePath = newPath, displayFlag = displayFlag, exportFlag = exportFlag)
+			endif
+		endfor
+		
 	endif
 	
 End
